@@ -1,0 +1,37 @@
+receivers:
+  otlp:
+    protocols:
+      grpc:
+        endpoint: 0.0.0.0:4317
+      http:
+        endpoint: 0.0.0.0:4319
+
+processors:
+  batch:
+    timeout: 2s
+    send_batch_size: 512
+  # NOTE: No resource processor here — each project sets its own
+  # service.name via init(project="your-project-name")
+
+exporters:
+  debug:
+    verbosity: detailed
+
+  # Data Prepper via OTLP gRPC → builds otel-v1-apm-span-* for Trace Analytics
+  otlp/data-prepper:
+    endpoint: "data-prepper:21890"
+    tls:
+      insecure: true
+
+  # Raw docs directly to OpenSearch → for Discover queries
+  opensearch:
+    http:
+      endpoint: "http://opensearch:9200"
+    traces_index: "otel-v1-apm-span"
+
+service:
+  pipelines:
+    traces:
+      receivers:  [otlp]
+      processors: [batch]
+      exporters:  [debug, otlp/data-prepper, opensearch]

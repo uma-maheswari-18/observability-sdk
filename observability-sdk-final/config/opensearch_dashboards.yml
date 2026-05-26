@@ -1,0 +1,10 @@
+# OpenSearch Dashboards config for Agent Traces (3.6)
+server.host: "0.0.0.0"
+opensearch.hosts: ["http://opensearch:9200"]
+opensearch.ssl.verificationMode: none
+
+# Enable Agent Traces / Agent Graph feature flags
+workspace.enabled: true
+data_source.enabled: true
+explore.enabled: true
+explore.agentTraces.enabled: true

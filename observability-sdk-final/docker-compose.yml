@@ -1,0 +1,74 @@
+version: "3.8"
+
+services:
+
+  opensearch:
+    image: opensearchproject/opensearch:3.6.0
+    container_name: opensearch
+    environment:
+      - discovery.type=single-node
+      - OPENSEARCH_JAVA_OPTS=-Xms1g -Xmx1g
+      - DISABLE_SECURITY_PLUGIN=true
+      - DISABLE_INSTALL_DEMO_CONFIG=true
+      - OPENSEARCH_INITIAL_ADMIN_PASSWORD=${OPENSEARCH_PASSWORD:-Admin@123456!}
+    ports:
+      - "9200:9200"
+      - "9600:9600"
+    volumes:
+      - opensearch_data:/usr/share/opensearch/data
+    restart: unless-stopped
+    healthcheck:
+      test: ["CMD-SHELL", "curl -s http://localhost:9200/_cluster/health | grep -E '\"status\":\"(green|yellow)\"'"]
+      interval: 15s
+      timeout: 10s
+      retries: 15
+
+  opensearch-dashboards:
+    image: opensearchproject/opensearch-dashboards:3.6.0
+    container_name: opensearch-dashboards
+    ports:
+      - "5601:5601"
+    environment:
+      - OPENSEARCH_HOSTS=http://opensearch:9200
+      - DISABLE_SECURITY_DASHBOARDS_PLUGIN=true
+    volumes:
+      - ./config/opensearch_dashboards.yml:/usr/share/opensearch-dashboards/config/opensearch_dashboards.yml
+      - dashboards_data:/usr/share/opensearch-dashboards/data
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  data-prepper:
+    image: opensearchproject/data-prepper:2.15.1
+    container_name: data-prepper
+    ports:
+      - "21890:21890"
+      - "21891:21891"
+      - "4900:4900"
+    volumes:
+      - ./config/data-prepper-pipeline.yml:/usr/share/data-prepper/pipelines/pipeline.yaml
+      - ./config/data-prepper-config.yml:/usr/share/data-prepper/config/data-prepper-config.yaml
+    depends_on:
+      opensearch:
+        condition: service_healthy
+    restart: unless-stopped
+
+  otel-collector:
+    image: otel/opentelemetry-collector-contrib:latest
+    container_name: otel-collector
+    command: ["--config=/etc/otel-collector-config.yml"]
+    volumes:
+      - ./config/otel-collector-config.yml:/etc/otel-collector-config.yml
+    ports:
+      - "4319:4319"
+      - "4317:4317"
+      - "55679:55679"
+    depends_on:
+      - data-prepper
+      - opensearch
+    restart: unless-stopped
+
+volumes:
+  opensearch_data:
+  dashboards_data:
