@@ -145,8 +145,15 @@ class ObservabilityFramework:
         """
         Wrap your entire pipeline run in this context manager.
         All agent spans inside become children in the trace tree.
+        Starts a NEW root trace — not a child of FastAPI/HTTP spans.
         """
-        with self.otel.root_span(
+        from opentelemetry.trace import NonRecordingSpan, SpanContext, TraceFlags
+        from opentelemetry import context as otel_context
+        # Detach from FastAPI parent so pipeline.run is a true root span
+        fresh_ctx = otel_context.Context()
+        token = otel_context.attach(fresh_ctx)
+        try:
+          with self.otel.root_span(
             "pipeline.run",
             attributes={
                 "trace.id":          trace_id,
@@ -156,8 +163,10 @@ class ObservabilityFramework:
                 "gen_ai.model":      self.model,
                 "service.name":      self.project,
             }
-        ) as root_span:
+          ) as root_span:
             yield root_span
+        finally:
+            otel_context.detach(token)
 
     # ── Per-agent span ──────────────────────────────────────────────────────
 
@@ -215,6 +224,7 @@ class ObservabilityFramework:
             "gen_ai.tokens.input":  input_tokens,
             "gen_ai.tokens.output": output_tokens,
             "gen_ai.prompt":        prompt[:2000],
+            "gen_ai.input":           prompt[:2000],
             "gen_ai.response":      response[:2000],
         }
         self.os_client.index_trace(doc)
@@ -264,6 +274,8 @@ class ObservabilityFramework:
                 attributes={"workflow.stage": agent_name, "service.name": service_name},
             ) as llm_sp:
                 llm_sp.set_attribute("gen_ai.response",            response[:1000])
+                llm_sp.set_attribute("gen_ai.output",              response[:1000])
+                llm_sp.set_attribute("gen_ai.completion",          response[:1000])
                 llm_sp.set_attribute("gen_ai.usage.input_tokens",  input_tokens)
                 llm_sp.set_attribute("gen_ai.usage.output_tokens", output_tokens)
                 llm_sp.set_attribute("llm.ttft_seconds",           ttft)
